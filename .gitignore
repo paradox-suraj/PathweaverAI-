@@ -34,3 +34,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+.env
+
+# Build cache
+tsconfig.tsbuildinfo
+
+# Generated Prisma Client
+generated/

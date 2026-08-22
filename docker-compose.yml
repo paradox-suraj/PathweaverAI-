@@ -1,0 +1,71 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ytai-app:latest
+    container_name: ytai_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ytai?schema=public
+      - REDIS_URL=redis://redis:6379
+      # Pass through other necessary environment variables
+      - NODE_ENV=production
+      # - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      # - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      # - AUTH_SECRET=${AUTH_SECRET}
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+    networks:
+      - ytai_network
+
+  db:
+    image: postgres:15-alpine
+    container_name: ytai_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ytai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ytai_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ytai_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ytai_network
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  ytai_network:
+    driver: bridge

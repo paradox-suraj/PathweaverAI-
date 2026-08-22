@@ -1,0 +1,558 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -- NEXT AUTH --
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  username      String?   @unique
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts Account[]
+  sessions Session[]
+
+  // App Relations
+  learningGoals  LearningGoal[]
+  courses        Course[]
+  studySessions  StudySession[]
+  learningEvents LearningEvent[]
+  lessonNotes    LessonNote[]
+  topicMasteries TopicMastery[]
+  studyPlans     StudyPlan[]
+  quizAttempts   QuizAttempt[]
+  userStat       UserStat?
+  userBadges     UserBadge[]
+  courseReviews  CourseReview[]
+  notifications  Notification[]
+  reportsFiled   CourseReport[]
+  userApiKeys    UserApiKey[]
+
+  // Bounty Relations
+  createdBounties Bounty[]       @relation("BountyCreator")
+  bountyAnswers   BountyAnswer[] @relation("BountyAnswerer")
+
+  // Social & Profiles
+  userProfile    UserProfile?
+  followers      Follow[]       @relation("UserFollowing")
+  following      Follow[]       @relation("UserFollower")
+  hostedParties  LiveParty[]    @relation("LivePartyHost")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// -- DOMAIN: LEARNING STRUCTURE --
+
+model LearningGoal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  courses     Course[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Course {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learningGoalId String?
+  learningGoal   LearningGoal? @relation(fields: [learningGoalId], references: [id], onDelete: SetNull)
+
+  title       String
+  description String
+  promptGoal  String?
+  status        String  @default("GENERATING") // GENERATING, ACTIVE, COMPLETED, FAILED
+  statusMessage String? // For granular UI progress
+
+  // Community & Social Learning
+  isPublished     Boolean @default(false)
+  isPublic        Boolean @default(true)
+  clonedFromId    String?
+  rating          Float   @default(0.0)
+  ratingCount     Int     @default(0)
+  enrollmentCount Int     @default(0)
+
+  modules    CourseModule[]
+  studyPlans StudyPlan[]
+  courseReviews CourseReview[]
+  reports    CourseReport[]
+  liveParties LiveParty[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([isPublished, enrollmentCount(sort: Desc)])
+  @@index([isPublished, rating(sort: Desc)])
+}
+
+model CourseModule {
+  id       String @id @default(cuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title    String
+  order    Int
+
+  topics Topic[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Topic {
+  id            String       @id @default(cuid())
+  moduleId      String
+  module        CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  order         Int
+  estimatedMins Int
+
+  resources    LearningResource[]
+  masteries    TopicMastery[]
+  quizzes      Quiz[]
+  tasks        StudyTask[]
+  lessonNotes  LessonNote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([moduleId])
+}
+
+// -- DOMAIN: RESOURCES --
+
+model LearningResource {
+  id      String @id @default(cuid())
+  topicId String
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  type  String // VIDEO, ARTICLE, QUIZ
+  title String
+
+  videoResource   VideoResource?
+  articleResource ArticleResource?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([topicId])
+}
+
+model VideoResource {
+  id                 String           @id @default(cuid())
+  learningResourceId String           @unique
+  resource           LearningResource @relation(fields: [learningResourceId], references: [id], onDelete: Cascade)
+
+  youtubeVideoId  String
+  durationSeconds Int?
+  thumbnailUrl    String?
+  channelName     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ArticleResource {
+  id                 String           @id @default(cuid())
+  learningResourceId String           @unique
+  resource           LearningResource @relation(fields: [learningResourceId], references: [id], onDelete: Cascade)
+  content            String           // Markdown content
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -- DOMAIN: SCHEDULING --
+
+model LessonNote {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  content   String
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, topicId])
+}
+
+model StudyPlan {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks StudyTask[]
+}
+
+model StudyTask {
+  id      String    @id @default(cuid())
+  planId  String
+  plan    StudyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  topicId String
+  topic   Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  title       String
+  taskType    String    @default("LEARN") // LEARN, REVIEW
+  status      String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, SKIPPED
+  dueDate     DateTime?
+  scheduledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StudySession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  startTime    DateTime
+  endTime      DateTime?
+  durationMins Int?
+
+  events LearningEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -- DOMAIN: ANALYTICS & EVENTS --
+
+model LearningEvent {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String?
+  session   StudySession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  eventType  String // VIDEO_STARTED, VIDEO_PAUSED, QUIZ_STARTED, etc.
+  resourceId String? // Could be VideoResource ID, Quiz ID, etc.
+  metadata   String? // JSON string for extra data (e.g. playback position)
+  xpEarned   Int?    // XP rewarded for this event
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model UserStat {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  xp              Int      @default(0)
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  lastActiveDate  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([xp(sort: Desc)])
+  @@index([currentStreak(sort: Desc)])
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId    String   
+  unlockedAt DateTime @default(now())
+
+  @@unique([userId, badgeId])
+}
+
+model TopicMastery {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId String
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  masteryLevel Float // 0.0 to 1.0
+  confidence   Float // 0.0 to 1.0 (how sure is the system of this score)
+
+  nextReviewDate DateTime?
+  reviewCount    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, topicId])
+}
+
+// -- DOMAIN: ASSESSMENTS --
+
+model Quiz {
+  id      String @id @default(cuid())
+  topicId String
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  title     String
+  questions Question[]
+  attempts  QuizAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([topicId])
+}
+
+model Question {
+  id     String @id @default(cuid())
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  text          String
+  options       String // JSON array
+  correctAnswer Int // Index of correct option
+  explanation   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model QuizAttempt {
+  id     String @id @default(cuid())
+  quizId String
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  score       Float
+  completedAt DateTime @default(now())
+
+  @@index([quizId])
+  @@index([userId])
+}
+
+// -- DOMAIN: CACHING --
+
+model YoutubeCache {
+  id              String   @id @default(cuid())
+  query           String   @unique
+  videoId         String
+  durationSeconds Int?
+  thumbnailUrl    String?
+  channelName     String?
+  createdAt DateTime @default(now())
+}
+
+model CourseReview {
+  id       String @id @default(cuid())
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  rating   Int // 1 to 5
+  review   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([courseId, userId])
+}
+
+// -- DOMAIN: MODERATION & NOTIFICATIONS --
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title     String
+  message   String
+  type      String   @default("GENERAL") // REPORT_RECEIVED, COURSE_REMOVED, SYSTEM, etc.
+  read      Boolean  @default(false)
+  link      String?  // Optional URL to navigate to
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model CourseReport {
+  id         String   @id @default(cuid())
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  reporterId String
+  reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  reason     String
+  status     String   @default("PENDING") // PENDING, RESOLVED_REMOVED, RESOLVED_KEPT
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([courseId])
+  @@index([reporterId])
+}
+
+// -- DOMAIN: SECURITY & API KEYS --
+
+model RateLimit {
+  ip        String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserApiKey {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  provider  String   // e.g., 'gemini', 'openai'
+  keyData   String   // the encrypted key
+  iv        String   // initialization vector
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider])
+}
+
+// -- DOMAIN: PEER-TO-PEER LEARNING --
+
+model Bounty {
+  id           String         @id @default(cuid())
+  topicId      String?
+  creatorId    String
+  creator      User           @relation("BountyCreator", fields: [creatorId], references: [id])
+  rewardXP     Int
+  questionText String
+  status       String         @default("OPEN") // OPEN, ANSWERED, CLOSED
+  answers      BountyAnswer[]
+  
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model BountyAnswer {
+  id         String   @id @default(cuid())
+  bountyId   String
+  bounty     Bounty   @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation("BountyAnswerer", fields: [authorId], references: [id])
+  answerText String
+  isAccepted Boolean  @default(false)
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// -- DOMAIN: SOCIAL & LIVE LEARNING --
+
+model UserProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio             String?  @db.Text
+  isPublicProfile Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+
+  follower    User     @relation("UserFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model LiveParty {
+  id              String    @id @default(cuid())
+  hostId          String
+  host            User      @relation("LivePartyHost", fields: [hostId], references: [id], onDelete: Cascade)
+  courseId        String
+  // Relation without onDelete: Cascade because we don't want Course deletions to fail due to parties, but SetNull/Cascade is fine.
+  course          Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String?   @db.Text
+  status          String    @default("SCHEDULED") // SCHEDULED, LIVE, ENDED
+  maxParticipants Int       @default(50)
+  scheduledAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([hostId])
+  @@index([status])
+}
