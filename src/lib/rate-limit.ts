@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { redis } from "@/lib/redis";
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -18,58 +18,31 @@ export class RateLimiter {
    * Cleans up expired rate limits automatically.
    */
   async check(ip: string): Promise<{ success: boolean; limit: number; remaining: number; resetAt: Date }> {
-    const now = new Date();
+    const now = Date.now();
+    const redisKey = `ratelimit:${ip}`;
+    const windowStart = now - this.config.windowMs;
+
+    const multi = redis.multi();
+    multi.zremrangebyscore(redisKey, 0, windowStart);
+    multi.zadd(redisKey, now, `${now}-${Math.random()}`);
+    multi.zcard(redisKey);
+    multi.expire(redisKey, Math.ceil(this.config.windowMs / 1000));
+
+    const results = await multi.exec();
+    if (!results) throw new Error("Redis exec failed");
     
-    // First, try to fetch the current rate limit for this IP
-    const record = await prisma.rateLimit.findUnique({
-      where: { ip }
-    });
+    // In ioredis, multi.exec() returns Array<[Error | null, any]>
+    const currentRequests = (results[2]?.[1] as number) || 1;
 
-    if (!record) {
-      // No record exists, create one
-      const resetAt = new Date(now.getTime() + this.config.windowMs);
-      await prisma.rateLimit.create({
-        data: {
-          ip,
-          count: 1,
-          resetAt
-        }
-      });
-      return { success: true, limit: this.config.maxRequests, remaining: this.config.maxRequests - 1, resetAt };
+    const remaining = Math.max(0, this.config.maxRequests - currentRequests);
+    const success = currentRequests <= this.config.maxRequests;
+    const resetAt = new Date(now + this.config.windowMs);
+
+    if (!success) {
+      console.warn(`[SECURITY] Rate limit exceeded for IP: ${ip}`);
     }
 
-    if (now > record.resetAt) {
-      // Window expired, reset it
-      const resetAt = new Date(now.getTime() + this.config.windowMs);
-      await prisma.rateLimit.update({
-        where: { ip },
-        data: {
-          count: 1,
-          resetAt
-        }
-      });
-      return { success: true, limit: this.config.maxRequests, remaining: this.config.maxRequests - 1, resetAt };
-    }
-
-    if (record.count >= this.config.maxRequests) {
-      // Rate limit exceeded
-      return { success: false, limit: this.config.maxRequests, remaining: 0, resetAt: record.resetAt };
-    }
-
-    // Increment count
-    const updated = await prisma.rateLimit.update({
-      where: { ip },
-      data: {
-        count: { increment: 1 }
-      }
-    });
-
-    return { 
-      success: true, 
-      limit: this.config.maxRequests, 
-      remaining: this.config.maxRequests - updated.count, 
-      resetAt: updated.resetAt 
-    };
+    return { success, limit: this.config.maxRequests, remaining, resetAt };
   }
 }
 

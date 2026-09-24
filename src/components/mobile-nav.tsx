@@ -8,10 +8,11 @@ export function MobileNav() {
 
   const navItems = [
     { name: "Home", href: "/dashboard", icon: "dashboard" },
-    { name: "Profile", href: "/profile", icon: "person", matchPrefix: true },
     { name: "Community", href: "/community", icon: "public", matchPrefix: true },
+    { name: "Guilds", href: "/guilds", icon: "group", matchPrefix: true },
     { name: "Party", href: "/live-parties", icon: "celebration", matchPrefix: true },
-    { name: "Stats", href: "/analytics", icon: "insights" },
+    { name: "Messages", href: "/messages", icon: "chat", matchPrefix: true },
+    { name: "Leader", href: "/leaderboard", icon: "leaderboard" },
     { name: "Settings", href: "/settings", icon: "settings" },
   ];
 
@@ -32,7 +33,7 @@ export function MobileNav() {
               }`}
             >
               <span 
-                className={`material-symbols-outlined text-2xl ${isActive ? 'shadow-glow-primary' : ''}`}
+                className={`material-symbols-outlined text-2xl transition-transform ${isActive ? 'scale-110' : ''}`}
                 style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
               >
                 {item.icon}

@@ -34,7 +34,6 @@ export async function logEvent(
     const session = await auth();
     if (!session?.user?.id) return { success: false, error: "Unauthorized" };
 
-    // In a real app we'd attach this to an active StudySession
     await progressService.logEvent(
       session.user.id,
       eventType,

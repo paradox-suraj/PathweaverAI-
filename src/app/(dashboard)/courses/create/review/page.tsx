@@ -22,11 +22,6 @@ export default function CourseCreationReview() {
         router.push("/courses/create/commitment");
     };
 
-    const handleTogglePrivacy = () => {
-        const { setValue } = (window as any).formMethods || {};
-        // Note: the component uses useFormContext so setValue is available
-    };
-
     const handleGenerate = async () => {
         if (isGenerating) return;
         setIsGenerating(true);

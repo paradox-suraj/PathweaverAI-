@@ -40,10 +40,36 @@ model User {
   bountyAnswers   BountyAnswer[] @relation("BountyAnswerer")
 
   // Social & Profiles
-  userProfile    UserProfile?
-  followers      Follow[]       @relation("UserFollowing")
-  following      Follow[]       @relation("UserFollower")
-  hostedParties  LiveParty[]    @relation("LivePartyHost")
+  userProfile   UserProfile?
+  followers     Follow[]     @relation("UserFollowing")
+  following     Follow[]     @relation("UserFollower")
+  hostedParties LiveParty[]  @relation("LivePartyHost")
+
+  // Direct Messages
+  dmThreadsAsA       DirectMessageThread[] @relation("ThreadParticipantA")
+  dmThreadsAsB       DirectMessageThread[] @relation("ThreadParticipantB")
+  sentDirectMessages DirectMessage[]       @relation("SentDirectMessages")
+
+  // Guilds
+  foundedGuilds    Guild[]       @relation("GuildFounder")
+  guildMemberships GuildMember[]
+
+  // Audit Logs
+  auditLogs        AuditLog[]
+
+  // Monetization & Creator Economy
+  razorpayCustomerId String? @unique
+  razorpayAccountId  String? @unique // For Razorpay Route
+  payoutsEnabled   Boolean @default(false)
+
+  wallet             Wallet?
+  walletTransactions WalletTransaction[]
+  creatorEarnings    CreatorEarning[]
+  purchases          Purchase[]
+
+  // Streak & Tasks
+  activityDates      UserActivityDate[]
+  dailyTasks         UserDailyTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -111,9 +137,9 @@ model Course {
   learningGoalId String?
   learningGoal   LearningGoal? @relation(fields: [learningGoalId], references: [id], onDelete: SetNull)
 
-  title       String
-  description String
-  promptGoal  String?
+  title         String
+  description   String
+  promptGoal    String?
   status        String  @default("GENERATING") // GENERATING, ACTIVE, COMPLETED, FAILED
   statusMessage String? // For granular UI progress
 
@@ -125,11 +151,15 @@ model Course {
   ratingCount     Int     @default(0)
   enrollmentCount Int     @default(0)
 
-  modules    CourseModule[]
-  studyPlans StudyPlan[]
+  // Monetization
+  price           Int?    // In cents
+  currency        String  @default("usd")
+
+  modules       CourseModule[]
+  studyPlans    StudyPlan[]
   courseReviews CourseReview[]
-  reports    CourseReport[]
-  liveParties LiveParty[]
+  reports       CourseReport[]
+  liveParties   LiveParty[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -163,11 +193,25 @@ model Topic {
   order         Int
   estimatedMins Int
 
-  resources    LearningResource[]
-  masteries    TopicMastery[]
-  quizzes      Quiz[]
-  tasks        StudyTask[]
-  lessonNotes  LessonNote[]
+  // Lesson pedagogical metadata (stored as JSON strings)
+  // objectives, prerequisites, keyConcepts, searchQueries → JSON-encoded string arrays/objects
+  type             String? // STANDARD, CODE_CHALLENGE, MODULE_QUIZ, REVIEW, PROJECT
+  objectives       String? // JSON: string[]  — measurable learning objectives
+  prerequisites    String? // JSON: string[]  — assumed prior knowledge
+  keyConcepts      String? // JSON: string[]  — core concepts introduced
+  practicalOutcome String? // Plain string    — what the learner can do/build after this lesson
+  assessmentIntent String? // Plain string    — how mastery will be tested
+  isVolatileTopic  Boolean @default(false) // true = frameworks/cloud/AI tooling
+  searchQueries    String? // JSON: LessonSearchQuery[] — multi-intent search queries
+
+  // Post-generation quality flag
+  qualityFlagged   Boolean @default(false) // true = lesson needs targeted regeneration
+
+  resources   LearningResource[]
+  masteries   TopicMastery[]
+  quizzes     Quiz[]
+  tasks       StudyTask[]
+  lessonNotes LessonNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -182,11 +226,12 @@ model LearningResource {
   topicId String
   topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
-  type  String // VIDEO, ARTICLE, QUIZ
+  type  String // VIDEO, ARTICLE, QUIZ, CODE
   title String
 
   videoResource   VideoResource?
   articleResource ArticleResource?
+  codeResource    CodeResource?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -212,7 +257,21 @@ model ArticleResource {
   id                 String           @id @default(cuid())
   learningResourceId String           @unique
   resource           LearningResource @relation(fields: [learningResourceId], references: [id], onDelete: Cascade)
-  content            String           // Markdown content
+  content            String // Markdown content
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CodeResource {
+  id                 String           @id @default(cuid())
+  learningResourceId String           @unique
+  resource           LearningResource @relation(fields: [learningResourceId], references: [id], onDelete: Cascade)
+
+  language     String  @default("javascript")
+  initialCode  String  @db.Text
+  solutionCode String? @db.Text
+  instructions String  @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,16 +280,16 @@ model ArticleResource {
 // -- DOMAIN: SCHEDULING --
 
 model LessonNote {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  topicId   String
-  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  content   String
-  
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId String
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  content String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@unique([userId, topicId])
 }
 
@@ -291,7 +350,7 @@ model LearningEvent {
   eventType  String // VIDEO_STARTED, VIDEO_PAUSED, QUIZ_STARTED, etc.
   resourceId String? // Could be VideoResource ID, Quiz ID, etc.
   metadata   String? // JSON string for extra data (e.g. playback position)
-  xpEarned   Int?    // XP rewarded for this event
+  xpEarned   Int? // XP rewarded for this event
 
   createdAt DateTime @default(now())
 
@@ -300,14 +359,14 @@ model LearningEvent {
 }
 
 model UserStat {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  xp              Int      @default(0)
-  currentStreak   Int      @default(0)
-  longestStreak   Int      @default(0)
-  lastActiveDate  DateTime?
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  xp             Int       @default(0)
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastActiveDate DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -320,7 +379,7 @@ model UserBadge {
   id         String   @id @default(cuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  badgeId    String   
+  badgeId    String
   unlockedAt DateTime @default(now())
 
   @@unique([userId, badgeId])
@@ -399,7 +458,7 @@ model YoutubeCache {
   durationSeconds Int?
   thumbnailUrl    String?
   channelName     String?
-  createdAt DateTime @default(now())
+  createdAt       DateTime @default(now())
 }
 
 model CourseReview {
@@ -408,9 +467,9 @@ model CourseReview {
   course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   userId   String
   user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  rating   Int // 1 to 5
-  review   String?
+
+  rating Int // 1 to 5
+  review String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -421,15 +480,15 @@ model CourseReview {
 // -- DOMAIN: MODERATION & NOTIFICATIONS --
 
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  title     String
-  message   String
-  type      String   @default("GENERAL") // REPORT_RECEIVED, COURSE_REMOVED, SYSTEM, etc.
-  read      Boolean  @default(false)
-  link      String?  // Optional URL to navigate to
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title   String
+  message String
+  type    String  @default("GENERAL") // REPORT_RECEIVED, COURSE_REMOVED, SYSTEM, etc.
+  read    Boolean @default(false)
+  link    String? // Optional URL to navigate to
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -438,17 +497,17 @@ model Notification {
 }
 
 model CourseReport {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   courseId   String
-  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   reporterId String
-  reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reporter   User   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
 
-  reason     String
-  status     String   @default("PENDING") // PENDING, RESOLVED_REMOVED, RESOLVED_KEPT
+  reason String
+  status String @default("PENDING") // PENDING, RESOLVED_REMOVED, RESOLVED_KEPT
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([courseId])
   @@index([reporterId])
@@ -465,14 +524,14 @@ model RateLimit {
 }
 
 model UserApiKey {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  provider  String   // e.g., 'gemini', 'openai'
-  keyData   String   // the encrypted key
-  iv        String   // initialization vector
-  
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider String // e.g., 'gemini', 'openai'
+  keyData  String // the encrypted key
+  iv       String // initialization vector
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -487,49 +546,50 @@ model Bounty {
   creatorId    String
   creator      User           @relation("BountyCreator", fields: [creatorId], references: [id])
   rewardXP     Int
+  rewardCredits Int @default(0)
   questionText String
   status       String         @default("OPEN") // OPEN, ANSWERED, CLOSED
   answers      BountyAnswer[]
-  
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model BountyAnswer {
-  id         String   @id @default(cuid())
+  id         String  @id @default(cuid())
   bountyId   String
-  bounty     Bounty   @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  bounty     Bounty  @relation(fields: [bountyId], references: [id], onDelete: Cascade)
   authorId   String
-  author     User     @relation("BountyAnswerer", fields: [authorId], references: [id])
+  author     User    @relation("BountyAnswerer", fields: [authorId], references: [id])
   answerText String
-  isAccepted Boolean  @default(false)
-  
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isAccepted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // -- DOMAIN: SOCIAL & LIVE LEARNING --
 
 model UserProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bio             String?  @db.Text
-  isPublicProfile Boolean  @default(true)
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio             String? @db.Text
+  isPublicProfile Boolean @default(true)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Follow {
-  id          String   @id @default(cuid())
+  id          String @id @default(cuid())
   followerId  String
   followingId String
 
-  follower    User     @relation("UserFollower", fields: [followerId], references: [id], onDelete: Cascade)
-  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+  follower  User @relation("UserFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([followerId, followingId])
   @@index([followerId])
@@ -537,22 +597,219 @@ model Follow {
 }
 
 model LiveParty {
-  id              String    @id @default(cuid())
-  hostId          String
-  host            User      @relation("LivePartyHost", fields: [hostId], references: [id], onDelete: Cascade)
-  courseId        String
+  id       String @id @default(cuid())
+  hostId   String
+  host     User   @relation("LivePartyHost", fields: [hostId], references: [id], onDelete: Cascade)
+  courseId String
   // Relation without onDelete: Cascade because we don't want Course deletions to fail due to parties, but SetNull/Cascade is fine.
-  course          Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
   title           String
   description     String?   @db.Text
   status          String    @default("SCHEDULED") // SCHEDULED, LIVE, ENDED
   maxParticipants Int       @default(50)
   scheduledAt     DateTime?
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+
+  // Monetization
+  price           Int?    // In cents
+  currency        String  @default("usd")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([hostId])
   @@index([status])
+}
+
+// -- DOMAIN: DIRECT MESSAGES --
+
+model DirectMessageThread {
+  id String @id @default(cuid())
+
+  // Canonical ordering: participantAId < participantBId (lexicographic) ensures uniqueness
+  participantAId String
+  participantA   User   @relation("ThreadParticipantA", fields: [participantAId], references: [id], onDelete: Cascade)
+  participantBId String
+  participantB   User   @relation("ThreadParticipantB", fields: [participantBId], references: [id], onDelete: Cascade)
+
+  messages DirectMessage[]
+
+  lastMessageAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([participantAId, participantBId])
+  @@index([participantAId])
+  @@index([participantBId])
+}
+
+model DirectMessage {
+  id       String              @id @default(cuid())
+  threadId String
+  thread   DirectMessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId String
+  sender   User                @relation("SentDirectMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  content String @db.Text
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([threadId, createdAt])
+  @@index([senderId])
+}
+
+// -- DOMAIN: GUILDS --
+
+model Guild {
+  id          String  @id @default(cuid())
+  founderId   String
+  founder     User    @relation("GuildFounder", fields: [founderId], references: [id])
+  name        String  @unique
+  slug        String  @unique
+  description String? @db.Text
+  topic       String
+  isPublic    Boolean @default(true)
+  maxMembers  Int     @default(50)
+
+  members GuildMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([topic])
+  @@index([isPublic])
+}
+
+model GuildMember {
+  id      String @id @default(cuid())
+  guildId String
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    String @default("MEMBER") // FOUNDER, ADMIN, MEMBER
+
+  joinedAt DateTime @default(now())
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+  @@index([userId])
+}
+
+// -- DOMAIN: MONETIZATION & ECONOMICS --
+
+model Wallet {
+  id           String @id @default(cuid())
+  userId       String @unique
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditBalance Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WalletTransaction {
+  id            String @id @default(cuid())
+  userId        String
+  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          String // CREDIT_PURCHASE, BOUNTY_FUND, BOUNTY_REWARD
+  amount        Int    // Positive for gaining, negative for spending
+  balanceBefore Int
+  balanceAfter  Int
+  referenceId   String? // e.g. Bounty ID or StripeTransaction ID
+
+  createdAt DateTime @default(now())
+}
+
+model RazorpayTransaction {
+  id                      String @id @default(cuid())
+  razorpayOrderId         String? @unique
+  razorpayPaymentId       String? @unique
+  amount                  Int
+  currency                String @default("INR")
+  status                  String // CREATED, AUTHORIZED, CAPTURED, FAILED
+  type                    String // COURSE_PURCHASE, CREDIT_PURCHASE, PARTY_PURCHASE
+  metadata                String? // JSON string
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CreatorEarning {
+  id            String @id @default(cuid())
+  creatorId     String
+  creator       User   @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  sourceType    String // COURSE, LIVE_PARTY
+  sourceId      String // Course ID or LiveParty ID
+  grossAmount   Int
+  platformFee   Int
+  paymentFee    Int // Razorpay fee
+  creatorAmount Int
+  status        String // PENDING, PAID, FAILED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Purchase {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId    String?
+  livePartyId String?
+  amountPaid  Int
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([courseId])
+  @@index([livePartyId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // e.g. "BOUNTY_ACCEPTED", "COURSE_PURCHASED"
+  details   Json     // the payload
+  ipAddress String?
+  userAgent String?
+  hash      String   // cryptographic signature of the action to ensure immutability
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// -- DOMAIN: STREAKS & TASKS --
+
+model UserActivityDate {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String   // Format: "YYYY-MM-DD"
+  
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model UserDailyTask {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskType      String   // e.g. "COMPLETE_LESSON", "ANSWER_BOUNTY"
+  isCompleted   Boolean  @default(false)
+  rewardCredits Int      @default(10)
+  date          String   // Format: "YYYY-MM-DD"
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, taskType, date])
+  @@index([userId, date])
 }

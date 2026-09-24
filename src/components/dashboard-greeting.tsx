@@ -45,8 +45,7 @@ export function DashboardGreeting({ userName, courseTitle }: DashboardGreetingPr
         </p>
       </div>
 
-      <div className="bg-surface-2/50 border border-white/5 p-4 rounded-xl relative overflow-hidden group">
-        <div className="absolute top-0 left-0 w-1 h-full bg-primary/40 group-hover:bg-primary transition-colors"></div>
+      <div className="bg-bg-card border border-border-card p-4 rounded-xl relative overflow-hidden group">
         <p className="font-body-base text-text-secondary italic">"{quote.text}"</p>
         <p className="font-label-mono text-[11px] text-text-muted uppercase tracking-wider mt-2">— {quote.author}</p>
       </div>

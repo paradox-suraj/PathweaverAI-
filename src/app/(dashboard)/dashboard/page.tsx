@@ -86,6 +86,45 @@ export default async function DashboardPage() {
 
   const hoursStudied = (totalEstimatedMinsStudied / 60).toFixed(1);
 
+  // Calculate activity data for the last 7 days
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const recentEvents = await prisma.learningEvent.findMany({
+    where: {
+      userId: session.user.id,
+      createdAt: {
+        gte: sevenDaysAgo,
+      },
+      xpEarned: {
+        gt: 0,
+      }
+    },
+    select: {
+      createdAt: true,
+      xpEarned: true,
+    }
+  });
+
+  const activityMap = new Map<string, number>();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    // Initialize to 0, ensuring days without events still show up
+    activityMap.set(dayName, 0);
+  }
+
+  recentEvents.forEach(event => {
+    const dayName = event.createdAt.toLocaleDateString('en-US', { weekday: 'short' });
+    if (activityMap.has(dayName)) {
+      activityMap.set(dayName, (activityMap.get(dayName) || 0) + (event.xpEarned || 0));
+    }
+  });
+
+  const activityData = Array.from(activityMap.entries()).map(([name, xp]) => ({ name, xp }));
+
   return (
     <div className="max-w-[1440px] mx-auto w-full">
       {/* Greeting Header */}
@@ -105,51 +144,51 @@ export default async function DashboardPage() {
         {/* Stats Cards Row (Span 3 cols each on desktop) */}
         <AnimatedStatCard>
           <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <span className="material-symbols-outlined text-primary">auto_awesome</span>
+            <div className="flex items-center justify-center group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-gold-primary">auto_awesome</span>
             </div>
-            <span className="flex items-center text-secondary font-label-mono text-[10px] bg-secondary/10 px-2 py-1 rounded-full">
+            <span className="flex items-center text-text-primary font-label-mono text-[10px] bg-bg-card border border-border-card px-2 py-1 rounded-full">
               Level {level}
             </span>
           </div>
           <div>
-            <div className="font-headline-lg text-headline-lg text-primary mb-1">{totalXp}</div>
+            <div className="font-headline-lg text-headline-lg text-text-primary mb-1">{totalXp}</div>
             <div className="font-label-mono text-label-mono text-text-muted uppercase tracking-wider">Total XP</div>
           </div>
         </AnimatedStatCard>
 
         <AnimatedStatCard>
           <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <span className="material-symbols-outlined text-info">timer</span>
+            <div className="flex items-center justify-center group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-gold-primary">timer</span>
             </div>
           </div>
           <div>
-            <div className="font-headline-lg text-headline-lg text-info mb-1">{hoursStudied}<span className="text-lg text-text-muted ml-1">h</span></div>
+            <div className="font-headline-lg text-headline-lg text-text-primary mb-1">{hoursStudied}<span className="text-lg text-text-muted ml-1">h</span></div>
             <div className="font-label-mono text-label-mono text-text-muted uppercase tracking-wider">Hours Studied</div>
           </div>
         </AnimatedStatCard>
 
         <AnimatedStatCard>
           <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <span className="material-symbols-outlined text-secondary">workspace_premium</span>
+            <div className="flex items-center justify-center group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-gold-primary">workspace_premium</span>
             </div>
           </div>
           <div>
-            <div className="font-headline-lg text-headline-lg text-secondary mb-1">{coursesCompleted}</div>
+            <div className="font-headline-lg text-headline-lg text-text-primary mb-1">{coursesCompleted}</div>
             <div className="font-label-mono text-label-mono text-text-muted uppercase tracking-wider">Courses Completed</div>
           </div>
         </AnimatedStatCard>
 
         <AnimatedStatCard>
           <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-lg bg-accent-amber/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <span className="material-symbols-outlined text-accent-amber" style={{ fontVariationSettings: "'FILL' 1" }}>local_fire_department</span>
+            <div className="flex items-center justify-center group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-orange-primary" style={{ fontVariationSettings: "'FILL' 1" }}>local_fire_department</span>
             </div>
           </div>
           <div>
-            <div className="font-headline-lg text-headline-lg text-accent-amber mb-1">{totalLessonsCompleted}</div>
+            <div className="font-headline-lg text-headline-lg text-text-primary mb-1">{totalLessonsCompleted}</div>
             <div className="font-label-mono text-label-mono text-text-muted uppercase tracking-wider">Lessons Finished</div>
           </div>
         </AnimatedStatCard>
@@ -181,23 +220,17 @@ export default async function DashboardPage() {
                 {/* Circular Progress Gauge */}
                 <div className="relative w-48 h-48 flex items-center justify-center mb-6">
                   <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" fill="none" r="45" stroke="rgba(255,255,255,0.05)" strokeWidth="8"></circle>
+                    <circle cx="50" cy="50" fill="none" r="45" stroke="#262832" strokeWidth="8"></circle>
                     <circle 
                       className="transition-all duration-1000 ease-out" 
-                      cx="50" cy="50" fill="none" r="45" stroke="url(#primaryGradient)" 
+                      cx="50" cy="50" fill="none" r="45" stroke="#2A2C36" 
                       strokeDasharray="282.7" 
                       strokeDashoffset={282.7 - (282.7 * activeCourseProgress) / 100} 
                       strokeLinecap="round" strokeWidth="8">
                     </circle>
-                    <defs>
-                      <linearGradient id="primaryGradient" x1="0%" x2="100%" y1="0%" y2="100%">
-                        <stop offset="0%" stopColor="#8B5CF6"></stop>
-                        <stop offset="100%" stopColor="#4C1D95"></stop>
-                      </linearGradient>
-                    </defs>
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <span className="font-display-xl text-display-xl text-primary font-extrabold">{activeCourseProgress}%</span>
+                    <span className="font-display-xl text-display-xl text-gold-primary font-extrabold">{activeCourseProgress}%</span>
                     <span className="font-label-mono text-[10px] text-text-muted uppercase tracking-widest mt-1">Completed</span>
                   </div>
                 </div>
@@ -221,7 +254,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <ActivityChart />
+        <ActivityChart data={activityData} />
       </AnimatedContainer>
     </div>
   );

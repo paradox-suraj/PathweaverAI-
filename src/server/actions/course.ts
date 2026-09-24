@@ -144,7 +144,7 @@ export async function generateMissingArticleAction(topicId: string) {
       throw new Error("Unauthorized");
     }
 
-    await courseService.generateMissingArticle(topicId, session.user.id);
+    await courseService.regenerateArticleForTopic(topicId, session.user.id);
     return { success: true };
   } catch (error: any) {
     console.error("Error generating missing article:", error);

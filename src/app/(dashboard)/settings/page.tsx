@@ -82,6 +82,18 @@ export default async function SettingsPage() {
         <ApiKeyForm />
       </div>
 
+      <div className="glass-panel rounded-xl overflow-hidden mb-6">
+        <div className="p-6 flex flex-col sm:flex-row gap-4 justify-between items-center border-b border-white/5">
+          <div>
+            <h3 className="font-bold text-text-primary">Monetization & Creator Payouts</h3>
+            <p className="text-sm text-text-muted">Manage your Razorpay Linked Account and view your earnings.</p>
+          </div>
+          <Link href="/settings/monetization" className="px-4 py-2 bg-primary/20 text-primary rounded-md text-sm font-medium hover:bg-primary/30 transition-colors">
+            Manage Payouts
+          </Link>
+        </div>
+      </div>
+
       <div className="glass-panel rounded-xl p-6 flex flex-col sm:flex-row gap-4 justify-between items-center">
         <div>
           <h3 className="font-bold text-text-primary">Session Management</h3>

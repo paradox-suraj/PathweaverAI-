@@ -28,7 +28,7 @@ export function AnimatedStatCard({ children, delay = 0, className = "" }: { chil
   return (
     <motion.div
       variants={itemVariants}
-      className={`col-span-1 md:col-span-3 glass-panel rounded-xl p-sp-6 flex flex-col justify-between group hover:border-primary/30 transition-colors ${className}`}
+      className={`col-span-1 md:col-span-3 bg-bg-main rounded-xl p-sp-6 flex flex-col justify-between group transition-colors ${className}`}
     >
       {children}
     </motion.div>
@@ -48,18 +48,7 @@ export function AnimatedContainer({ children, className }: { children: React.Rea
   )
 }
 
-// Dummy data for the interactive chart, since historical XP isn't easily queryable yet without complex aggregations
-const activityData = [
-  { name: 'Mon', xp: 120 },
-  { name: 'Tue', xp: 250 },
-  { name: 'Wed', xp: 180 },
-  { name: 'Thu', xp: 300 },
-  { name: 'Fri', xp: 450 },
-  { name: 'Sat', xp: 200 },
-  { name: 'Sun', xp: 350 },
-];
-
-export function ActivityChart() {
+export function ActivityChart({ data }: { data: { name: string; xp: number }[] }) {
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
@@ -70,7 +59,7 @@ export function ActivityChart() {
       <h3 className="font-headline-md text-headline-md text-text-primary mb-sp-6">Learning Activity (Last 7 Days)</h3>
       <div className="w-full h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={activityData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="colorXp" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.8}/>
@@ -142,10 +131,10 @@ export function GsapTimelineList({ tasks }: { tasks: any[] }) {
               </div>
             )}
             
-            <div className={`flex-1 rounded-lg p-sp-4 border transition-colors ${index === 0 ? 'bg-surface-2 border-primary/30 group-hover:border-primary' : 'bg-surface-1/30 border-white/5 group-hover:border-white/10'}`}>
+            <div className={`flex-1 rounded-lg p-sp-4 border transition-colors ${index === 0 ? 'bg-bg-card border-gold-primary group-hover:border-gold-primary' : 'bg-bg-card border-border-card group-hover:border-border-light'}`}>
               <div className="flex justify-between items-start mb-2">
                 <h4 className="font-body-base text-body-base font-semibold text-text-primary">{task.title}</h4>
-                <span className={`font-label-mono text-[10px] flex flex-col items-end gap-1 ${index === 0 ? 'text-primary' : 'text-text-muted'}`}>
+                <span className={`font-label-mono text-[10px] flex flex-col items-end gap-1 ${index === 0 ? 'text-gold-primary' : 'text-text-muted'}`}>
                   <span>{task.topic.estimatedMins} mins</span>
                   {task.scheduledAt && <span className="opacity-80">Scheduled: {new Date(task.scheduledAt).toLocaleDateString()}</span>}
                 </span>
@@ -155,8 +144,8 @@ export function GsapTimelineList({ tasks }: { tasks: any[] }) {
               {index === 0 && (
                 <div className="flex gap-2">
                   <Link href={`/courses/${task.topic.module.courseId}/lesson/${task.topicId}`}>
-                    <button className={`px-4 py-1.5 rounded font-label-mono text-[10px] uppercase tracking-wider hover:scale-105 transition-transform ${task.taskType === 'REVIEW' ? 'bg-accent-amber/20 text-accent-amber border border-accent-amber/30' : 'bg-primary-gradient text-white shadow-glow-primary'}`}>
-                      {task.taskType === 'REVIEW' ? 'Review Lesson' : 'Start Lesson'}
+                    <button className={`px-4 py-2 rounded-lg font-label-mono text-[12px] hover:scale-105 transition-transform ${task.taskType === 'REVIEW' ? 'bg-bg-card text-gold-primary border border-gold-primary' : 'bg-gold-primary text-gold-text-dark font-medium'}`}>
+                      {task.taskType === 'REVIEW' ? 'Review Lesson' : 'Start lesson'}
                     </button>
                   </Link>
                 </div>

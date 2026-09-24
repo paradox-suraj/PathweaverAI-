@@ -7,8 +7,10 @@ import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { WatchPartyState, WatchPartyMessage } from '@/lib/watchParty';
-import { getCourseLessonsForParty, endLiveParty } from '@/server/actions/live-party';
+import { getCourseLessonsForParty, endLiveParty, askAICoHost } from '@/server/actions/live-party';
 import { useRouter } from 'next/navigation';
+import { useVoiceChat } from '@/hooks/useVoiceChat';
+import { Mic, MicOff } from 'lucide-react';
 
 export default function WatchPartyPage({
   params,
@@ -29,6 +31,9 @@ export default function WatchPartyPage({
   const playerRef = useRef<YouTubePlayer>(null);
   const [isHost, setIsHost] = useState(false);
   const [modules, setModules] = useState<any[]>([]);
+
+  // Voice Chat
+  const { peerId, isMuted, toggleMute, remoteStreams, callPeer } = useVoiceChat(partyId, session?.user?.id || 'anon');
   
   // Sync interval
   useEffect(() => {
@@ -59,6 +64,14 @@ export default function WatchPartyPage({
                 setActiveReactions(prev => prev.filter(pr => !newReactions.find((nr: any) => nr.id === pr.id)));
               }, 3000);
             }
+          }
+
+          if (data.voicePeers && peerId) {
+            data.voicePeers.forEach((pId: string) => {
+              if (pId !== peerId) {
+                callPeer(pId);
+              }
+            });
           }
           
           if (session?.user?.id === data.state?.hostId) {
@@ -100,7 +113,18 @@ export default function WatchPartyPage({
     interval = setInterval(() => sync(), 2000);
 
     return () => clearInterval(interval);
-  }, [partyId, session?.user?.id]);
+  }, [partyId, session?.user?.id, peerId, callPeer]);
+
+  // Register voice peer once initialized
+  useEffect(() => {
+    if (peerId) {
+      fetch(`/api/watch-parties/${partyId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'REGISTER_VOICE_PEER', payload: { peerId } }),
+      }).catch(err => console.error("Failed to register voice peer:", err));
+    }
+  }, [partyId, peerId]);
 
   useEffect(() => {
     if (isHost && state?.courseId && modules.length === 0) {
@@ -137,18 +161,29 @@ export default function WatchPartyPage({
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim()) return;
+    const content = chatInput.trim();
+    if (!content) return;
 
+    // Local optimistic update logic goes through SSE normally,
+    // but we can fire the async request to the sync endpoint.
     await fetch(`/api/watch-parties/${partyId}/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'SEND_MESSAGE',
-        payload: { content: chatInput },
+        payload: { content },
       }),
     });
     
     setChatInput('');
+
+    // If message starts with @ai, trigger the AI Co-Host
+    if (content.toLowerCase().startsWith('@ai ')) {
+      const question = content.substring(4).trim();
+      if (question) {
+        askAICoHost(partyId, question).catch(err => console.error("AI error:", err));
+      }
+    }
   };
 
   const sendReaction = async (emoji: string) => {
@@ -176,8 +211,28 @@ export default function WatchPartyPage({
 
   return (
     <div className="flex h-screen bg-black text-white flex-col md:flex-row">
+      {/* Remote Audio Streams */}
+      {Array.from(remoteStreams.entries()).map(([id, stream]) => (
+        <audio 
+          key={id} 
+          autoPlay 
+          ref={el => { if (el) el.srcObject = stream; }} 
+        />
+      ))}
+
       <div className="flex-1 flex flex-col p-4 relative">
-        <h1 className="text-xl font-bold mb-4">Live Watch Party</h1>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-xl font-bold">Live Watch Party</h1>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleMute}
+            className={`text-xs border-neutral-700 hover:bg-neutral-800 ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-neutral-900 text-white'}`}
+          >
+            {isMuted ? <MicOff className="w-4 h-4 mr-2" /> : <Mic className="w-4 h-4 mr-2" />}
+            {isMuted ? 'Unmute' : 'Mute'}
+          </Button>
+        </div>
         <div className="flex-1 relative bg-neutral-900 rounded-lg overflow-hidden flex items-center justify-center">
           {state.currentVideoId ? (
             <YouTube

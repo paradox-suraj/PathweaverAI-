@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
+import { PostHogProvider } from "@/components/providers/posthog-provider";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -41,6 +42,10 @@ export const metadata: Metadata = {
     title: "PathWeaver AI - AI Academy",
     description: "An AI-powered adaptive learning platform that generates complete courses from YouTube playlists.",
   },
+  icons: {
+    icon: "/pathweaver-app_logo.png",
+    apple: "/pathweaver-app_logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -53,21 +58,23 @@ export default function RootLayout({
       <head>
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
       </head>
-      <body className="font-body-base text-body-base bg-bg-base overflow-x-hidden min-h-screen flex antialiased">
-        <Providers>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <div className="relative min-h-screen w-full">
-              <main className="relative z-10 w-full h-full flex flex-col">
-                {children}
-              </main>
-            </div>
-          </ThemeProvider>
-        </Providers>
+      <body className="font-body-base text-body-base bg-bg-main overflow-x-hidden min-h-screen flex antialiased">
+        <PostHogProvider>
+          <Providers>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <div className="relative min-h-screen w-full">
+                <main className="relative z-10 w-full h-full flex flex-col">
+                  {children}
+                </main>
+              </div>
+            </ThemeProvider>
+          </Providers>
+        </PostHogProvider>
       </body>
     </html>
   );

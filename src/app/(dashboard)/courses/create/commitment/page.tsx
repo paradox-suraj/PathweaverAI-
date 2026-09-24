@@ -21,7 +21,7 @@ export default function CourseCreationCommitmentSelection() {
     return (
         <div className="relative font-body-base overflow-hidden flex items-center justify-center min-h-[calc(100vh-80px)] w-full py-8 selection:bg-primary/30">
             <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
-                <div className="bg-cover bg-center w-full h-full" style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDiF3IhRfdvgBXzpobuJ9c8wxxSm2Alad2DKGNErpcTuCHEWTWpYby3WVR9XqzffvzRa6W-D4edIbHrKi9NzcHy8aojrm9uKONoN0nxdpzdUZ_e0PMLHbcpOLTBLLpQXe6luj4J49J_GyLz_GYB77RBsGeCq-5d3Cl88NrIys_cxsCCMk9yg39p5_qKc68YZJxJwcAM5lAuJFhcQi02iciEcsFRFamVpQ1NRYLs5aQ3HDp63EM21h1NhA')" }}></div>
+                <div className="w-full h-full" style={{ background: 'radial-gradient(circle at 50% 20%, rgba(139, 92, 246, 0.18), transparent 60%), radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.12), transparent 50%)' }}></div>
             </div>
             <div className="fixed inset-0 z-0 backdrop-blur-[12px] bg-bg-base/70"></div>
             

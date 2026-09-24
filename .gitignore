@@ -43,3 +43,7 @@ tsconfig.tsbuildinfo
 
 # Generated Prisma Client
 generated/
+
+# Secret and key files
+keys.json
+*keys*.json

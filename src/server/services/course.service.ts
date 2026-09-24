@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { aiService } from "./ai.service";
-import { searchYouTubeVideo, fetchVideoTranscript } from "./youtube";
+import { searchYouTubeVideo, fetchVideoTranscript, fetchPlaylistVideos, truncateTranscriptSmart, PlaylistVideo } from "./youtube";
+import { gatherAndPreFilterCandidates, VideoCandidate } from "./video-filter.service";
+import { scoreAndRankCandidates } from "./video-scorer.service";
+import { fetchAndFilterTranscript } from "./transcript-filter.service";
+import { aiEvaluatorService } from "./ai-evaluator.service";
+import { TOP_CANDIDATES_FOR_TRANSCRIPT } from "../config/generation.config";
 import { scheduleService } from "./schedule.service";
 import { emitCommunityCourse } from "@/lib/events";
 import { redis } from "@/lib/redis";
@@ -24,6 +29,7 @@ export class CourseService {
                   include: {
                     videoResource: true,
                     articleResource: true,
+                    codeResource: true,
                   },
                 },
               },
@@ -103,6 +109,9 @@ export class CourseService {
 
     try {
       let finalContext = "";
+      // Playlist videos fetched upfront for matching later
+      let playlistVideos: PlaylistVideo[] = [];
+
       if (sourceType === "url" && sourceContent) {
         await updateStatus("Fetching source material from URL...");
         try {
@@ -115,6 +124,25 @@ export class CourseService {
         }
       } else if ((sourceType === "pdf" || sourceType === "text") && sourceContent) {
         finalContext = sourceContent.substring(0, 30000); // limit to 30k chars
+      } else if (sourceType === "playlist" && sourceContent) {
+        await updateStatus("Fetching YouTube playlist metadata...");
+        playlistVideos = await fetchPlaylistVideos(sourceContent);
+
+        if (playlistVideos.length > 0) {
+          // Build a compact context from video titles + descriptions (no transcripts = zero token cost)
+          const videoListText = playlistVideos
+            .map(
+              (v, i) =>
+                `Video ${i + 1}: "${v.title}"\n${v.description ? `Description: ${v.description.substring(0, 200)}` : ""}`
+            )
+            .join("\n\n");
+          finalContext =
+            `This course is based on the following YouTube playlist of ${playlistVideos.length} videos. ` +
+            `Structure the curriculum to follow the playlist's natural progression. Map each module/lesson to the corresponding video(s) in order:\n\n` +
+            videoListText.substring(0, 30000);
+        } else {
+          console.warn("[Playlist] No videos found — falling back to prompt-only generation.");
+        }
       }
 
       await updateStatus("Analyzing your preferences & Mapping knowledge nodes...");
@@ -122,27 +150,192 @@ export class CourseService {
 
       await updateStatus("Sourcing premium resources...");
 
-      // Pre-fetch all YouTube videos OUTSIDE the transaction to avoid holding
-      // the DB connection open during network I/O
-      const modulesWithVideos = await Promise.all(
+      // Helper: fuzzy-match a lesson title against playlist videos by word overlap
+      const matchPlaylistVideo = (lessonTitle: string): PlaylistVideo | null => {
+        if (playlistVideos.length === 0) return null;
+        const targetWords = lessonTitle
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length > 2);
+        let bestMatch: PlaylistVideo | null = null;
+        let highestScore = -1;
+        for (const video of playlistVideos) {
+          const videoTitleLower = video.title.toLowerCase();
+          let score = 0;
+          for (const word of targetWords) {
+            if (videoTitleLower.includes(word)) score++;
+          }
+          if (score > highestScore) {
+            highestScore = score;
+            bestMatch = video;
+          }
+        }
+        // Require at least 1 matching word to consider it a real match
+        return highestScore >= 1 ? bestMatch : null;
+      };
+
+      // ── Pass 1 (parallel): Candidate discovery fan-out for every LESSON
+      // Runs concurrently — the expensive YouTube network I/O.
+      // Playlist-matched lessons are resolved immediately.
+      const modulesWithCandidates = await Promise.all(
         curriculum.modules.map(async (mod) => ({
           ...mod,
           lessons: await Promise.all(
             mod.lessons.map(async (lesson) => {
-              let videoResult = null;
-              try {
-                videoResult = await searchYouTubeVideo(lesson.searchQuery, lesson.title);
-              } catch (e) {
-                console.error(`Failed to fetch video for lesson: ${lesson.title}`, e);
+              let playlistVideoResult: { videoId: string; durationSeconds?: number; thumbnailUrl?: string; channelName?: string; } | null = null;
+              let phaseCandidates: VideoCandidate[] = [];
+              let alternateQuery: typeof lesson.searchQueries[0] | undefined = undefined;
+
+              if (lesson.type === 'STANDARD' || lesson.type === 'REVIEW' || lesson.type === 'PROJECT') {
+                try {
+                  const playlistMatch = matchPlaylistVideo(lesson.title);
+                  if (playlistMatch) {
+                    playlistVideoResult = {
+                      videoId: playlistMatch.videoId,
+                      durationSeconds: playlistMatch.durationSeconds,
+                      thumbnailUrl: playlistMatch.thumbnailUrl,
+                      channelName: playlistMatch.channelName,
+                    };
+                    // Hold back the last query for the alternate search strategy fallback
+                    const queries = lesson.searchQueries ?? [];
+                    let initialQueries = queries;
+                    if (queries.length > 1) {
+                      alternateQuery = queries[queries.length - 1];
+                      initialQueries = queries.slice(0, queries.length - 1);
+                    }
+
+                    // Multi-candidate discovery + metadata pre-filtering
+                    const filterResult = await gatherAndPreFilterCandidates(
+                      initialQueries,
+                      lesson.title,
+                      lesson.estimatedMins,
+                      lesson.isVolatileTopic ?? false,
+                      lesson.searchQuery
+                    );
+                    phaseCandidates = filterResult.survivors;
+                  }
+                } catch (e) {
+                  console.error(`[VideoDiscovery] Failed for lesson: ${lesson.title}`, e);
+                }
               }
-              return {
-                ...lesson,
-                videoResult,
-              };
+
+              return { lesson, playlistVideoResult, phaseCandidates, alternateQuery };
             })
           ),
         }))
       );
+
+      // ── Pass 2 (sequential): Multi-factor scoring + transcript verification
+      // Sequential so usedChannelIds accurately reflects previous picks,
+      // and we don't spam the YouTube API with concurrent transcript requests.
+      const usedChannelIds = new Set<string>();
+
+      const modulesWithVideos: any[] = [];
+      for (const mod of modulesWithCandidates) {
+        const lessons = [];
+        for (const { lesson, playlistVideoResult, phaseCandidates, alternateQuery } of mod.lessons) {
+          let videoResult: { videoId: string; durationSeconds?: number; thumbnailUrl?: string; channelName?: string; } | null = null;
+
+          if (playlistVideoResult) {
+            // Playlist match — skip scoring
+            videoResult = playlistVideoResult;
+          } else if (phaseCandidates.length > 0) {
+            
+            // Process candidate batch through ranking, transcript verification, and pedagogical evaluation
+            const processCandidates = async (candidatesToProcess: VideoCandidate[]) => {
+              const ranked = scoreAndRankCandidates(candidatesToProcess, {
+                lessonTitle: lesson.title,
+                objectives: lesson.objectives ?? [],
+                keyConcepts: lesson.keyConcepts ?? [],
+                estimatedMins: lesson.estimatedMins,
+                isVolatileTopic: lesson.isVolatileTopic ?? false,
+                usedChannelIds,
+              });
+
+              // Transcript Quality Verification
+              const topCandidates = ranked.slice(0, TOP_CANDIDATES_FOR_TRANSCRIPT);
+              for (const candidate of topCandidates) {
+                const transcriptResult = await fetchAndFilterTranscript(
+                  candidate.videoId,
+                  candidate.durationSeconds
+                );
+
+                if (transcriptResult) {
+                  // Structured pedagogical evaluation
+                  const evaluation = await aiEvaluatorService.evaluateTranscript({
+                    lessonTitle: lesson.title,
+                    lessonDescription: lesson.description,
+                    objectives: lesson.objectives ?? [],
+                    keyConcepts: lesson.keyConcepts ?? [],
+                    learnerLevel: level,
+                    practicalOutcome: lesson.practicalOutcome ?? "",
+                    transcript: transcriptResult.transcript,
+                    videoTitle: candidate.title,
+                  }, userId);
+
+                  if (aiEvaluatorService.passesHardGates(evaluation)) {
+                    return {
+                      videoId: candidate.videoId,
+                      durationSeconds: candidate.durationSeconds,
+                      thumbnailUrl: candidate.thumbnailUrl,
+                      channelName: candidate.channelName,
+                      candidate // so we can extract channelId later
+                    };
+                  }
+                  console.log(`[CurriculumEvaluator] Candidate ${candidate.videoId} unaccepted for lesson "${lesson.title}". Recommendation: ${evaluation.recommendation}`);
+                }
+              }
+              return null;
+            };
+
+            const initialWinner = await processCandidates(phaseCandidates);
+            
+            if (initialWinner) {
+              usedChannelIds.add(initialWinner.candidate.channelId);
+              videoResult = {
+                videoId: initialWinner.videoId,
+                durationSeconds: initialWinner.durationSeconds,
+                thumbnailUrl: initialWinner.thumbnailUrl,
+                channelName: initialWinner.channelName,
+              };
+            } else if (alternateQuery) {
+              console.log(`[CurriculumEvaluator] Initial candidates unaccepted for "${lesson.title}". Triggering alternate search strategy.`);
+              try {
+                const fallbackResult = await gatherAndPreFilterCandidates(
+                  [alternateQuery],
+                  lesson.title,
+                  lesson.estimatedMins,
+                  lesson.isVolatileTopic ?? false,
+                  lesson.searchQuery
+                );
+                
+                if (fallbackResult.survivors.length > 0) {
+                  const fallbackWinner = await processCandidates(fallbackResult.survivors);
+                  if (fallbackWinner) {
+                    usedChannelIds.add(fallbackWinner.candidate.channelId);
+                    videoResult = {
+                      videoId: fallbackWinner.videoId,
+                      durationSeconds: fallbackWinner.durationSeconds,
+                      thumbnailUrl: fallbackWinner.thumbnailUrl,
+                      channelName: fallbackWinner.channelName,
+                    };
+                    console.log(`[CurriculumEvaluator] Alternate search strategy succeeded! Found video ${fallbackWinner.videoId}`);
+                  } else {
+                    console.warn(`[CurriculumEvaluator] Alternate search strategy also failed for "${lesson.title}".`);
+                  }
+                }
+              } catch (e) {
+                console.error(`[CurriculumEvaluator] Alternate search strategy error:`, e);
+              }
+            }
+          }
+          // If no candidates survived and no playlist match, videoResult stays null
+          // → lesson gets no video resource (learner reads article only)
+
+          lessons.push({ ...lesson, videoResult });
+        }
+        modulesWithVideos.push({ ...mod, lessons });
+      }
 
       const transactionPromise = prisma.$transaction(async (tx) => {
         await tx.course.update({
@@ -177,10 +370,44 @@ export class CourseService {
                 estimatedMins: finalEstimatedMins,
                 order: 0,
                 moduleId: createdModule.id,
+                type: lesson.type,
+                // Persist structured lesson metadata
+                objectives:       lesson.objectives?.length       ? JSON.stringify(lesson.objectives)    : null,
+                prerequisites:    lesson.prerequisites?.length    ? JSON.stringify(lesson.prerequisites) : null,
+                keyConcepts:      lesson.keyConcepts?.length      ? JSON.stringify(lesson.keyConcepts)   : null,
+                practicalOutcome: lesson.practicalOutcome         || null,
+                assessmentIntent: lesson.assessmentIntent         || null,
+                isVolatileTopic:  lesson.isVolatileTopic          ?? false,
+                searchQueries:    lesson.searchQueries?.length    ? JSON.stringify(lesson.searchQueries) : null,
               },
             });
             
-            if (lesson.videoResult) {
+            if (lesson.type === 'CODE_CHALLENGE') {
+              const resource = await tx.learningResource.create({
+                data: {
+                  title: lesson.title,
+                  type: "CODE",
+                  topicId: createdTopic.id,
+                }
+              });
+              
+              await tx.codeResource.create({
+                data: {
+                  learningResourceId: resource.id,
+                  language: lesson.codeLanguage || "javascript",
+                  initialCode: "// Write your code here\n",
+                  instructions: lesson.description
+                }
+              });
+            } else if (lesson.type === 'MODULE_QUIZ') {
+              await tx.learningResource.create({
+                data: {
+                  title: lesson.title,
+                  type: "QUIZ",
+                  topicId: createdTopic.id,
+                }
+              });
+            } else if (lesson.videoResult) {
               const resource = await tx.learningResource.create({
                 data: {
                   title: lesson.title,
@@ -234,7 +461,7 @@ export class CourseService {
               topics: {
                 include: {
                   resources: {
-                    include: { videoResource: true }
+                    include: { videoResource: true, articleResource: true, codeResource: true }
                   }
                 }
               }
@@ -247,17 +474,85 @@ export class CourseService {
         const allTopics = courseWithTopics.modules.flatMap(mod => mod.topics);
         
         // Execute all Deep Dive generations concurrently across the Multi-API Key pool
-        await Promise.all(allTopics.map(async (topic) => {
+        await Promise.all(allTopics.map(async (topic, index) => {
           try {
             let transcript = undefined;
-            const videoResource = topic.resources?.find((r: any) => r.type === "VIDEO")?.videoResource;
+            const videoItem = topic.resources?.find((r: any) => r.type === "VIDEO");
+            const videoResource = videoItem?.videoResource;
+            
             if (videoResource?.youtubeVideoId) {
               const fetched = await fetchVideoTranscript(videoResource.youtubeVideoId);
-              if (fetched && fetched.length > 0) {
-                transcript = fetched;
+              if (fetched) {
+                // Long-video guard: cap transcripts from videos longer than 30 minutes
+                const isLongVideo = (videoResource.durationSeconds ?? 0) > 1800;
+                transcript = isLongVideo ? truncateTranscriptSmart(fetched) : fetched;
               }
             }
-            const articleContent = await aiService.generateArticle(topic.title, topic.description || "", userId, transcript);
+
+            const previousTopic = index > 0 ? allTopics[index - 1] : undefined;
+            const nextTopic = index < allTopics.length - 1 ? allTopics[index + 1] : undefined;
+
+            const articleParams = {
+              topicTitle: topic.title,
+              topicDescription: topic.description || "",
+              lessonType: topic.type || "STANDARD",
+              learnerLevel: level,
+              objectives: topic.objectives ? JSON.parse(topic.objectives) : [],
+              keyConcepts: topic.keyConcepts ? JSON.parse(topic.keyConcepts) : [],
+              prerequisites: topic.prerequisites ? JSON.parse(topic.prerequisites) : [],
+              practicalOutcome: topic.practicalOutcome || undefined,
+              videoTranscript: transcript,
+              videoMetadata: videoResource ? { 
+                title: videoItem?.title || topic.title, 
+                channelName: videoResource.channelName || ""
+              } : undefined,
+              previousTopicTitle: previousTopic?.title,
+              nextTopicTitle: nextTopic?.title,
+            };
+
+            let articleContent = await aiService.generateArticle(articleParams, userId);
+
+            // Lesson-Level Quality Validation
+            if (articleParams.objectives.length > 0) {
+              try {
+                const evalResult = await aiEvaluatorService.evaluateArticleCoverage(
+                  articleContent,
+                  articleParams.objectives,
+                  topic.title,
+                  userId
+                );
+
+                if (!evalResult.approved) {
+                  console.log(`[QualityValidation] Article coverage check failed for "${topic.title}". Retrying with missing objectives...`);
+                  // Retry once
+                  articleContent = await aiService.generateArticle({
+                    ...articleParams,
+                    missingObjectivesToFix: evalResult.missingObjectives,
+                  }, userId);
+
+                  const retryEval = await aiEvaluatorService.evaluateArticleCoverage(
+                    articleContent,
+                    articleParams.objectives,
+                    topic.title,
+                    userId
+                  );
+
+                  if (!retryEval.approved) {
+                    console.log(`[QualityValidation] Article retry check failed. Flagging topic ${topic.id} for remediation.`);
+                    await prisma.topic.update({
+                      where: { id: topic.id },
+                      data: { qualityFlagged: true }
+                    });
+                  } else {
+                    console.log(`[QualityValidation] Article retry passed validation for "${topic.title}".`);
+                  }
+                } else {
+                  console.log(`[QualityValidation] Article passed validation for "${topic.title}".`);
+                }
+              } catch (evalError) {
+                console.error(`[QualityValidation] Lesson evaluation failed for ${topic.title}:`, evalError);
+              }
+            }
             
             const articleResource = await prisma.learningResource.create({
               data: {
@@ -280,6 +575,66 @@ export class CourseService {
         }));
       }
 
+      // Course-Level Curriculum Evaluation
+      try {
+        console.log(`[CurriculumEvaluator] Running comprehensive curriculum evaluation for course ${courseId}...`);
+        
+        // Fetch full course data to pass to evaluator
+        const fullCourse = await prisma.course.findUnique({
+          where: { id: courseId },
+          include: {
+            modules: {
+              include: {
+                topics: {
+                  include: {
+                    resources: {
+                      include: { articleResource: true, videoResource: true }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+        
+        if (fullCourse) {
+          const courseEval = await aiEvaluatorService.evaluateFullCourse(fullCourse, userId);
+          if (!courseEval.approved && courseEval.recommendedFixes.length > 0) {
+             console.log(`[CurriculumEvaluator] Flagged ${courseEval.recommendedFixes.length} topics for targeted remediation.`);
+             for (const fix of courseEval.recommendedFixes) {
+               await prisma.topic.update({
+                 where: { id: fix.topicId },
+                 data: { qualityFlagged: true }
+               });
+             }
+          } else {
+             console.log(`[CurriculumEvaluator] Course evaluator approved curriculum structure.`);
+          }
+        }
+      } catch (evalError) {
+        console.error(`[CurriculumEvaluator] Failed to run course-level evaluator:`, evalError);
+      }
+      
+      // Targeted Remediation Pass
+      try {
+        const flaggedTopics = await prisma.topic.findMany({
+          where: { moduleId: { in: courseWithTopics?.modules.map(m => m.id) || [] }, qualityFlagged: true }
+        });
+        
+        if (flaggedTopics.length > 0) {
+          console.log(`[CurriculumEvaluator] Starting targeted remediation pass for ${flaggedTopics.length} flagged topics...`);
+          for (const flaggedTopic of flaggedTopics) {
+            await this.regenerateArticleForTopic(flaggedTopic.id, userId);
+            await prisma.topic.update({
+              where: { id: flaggedTopic.id },
+              data: { qualityFlagged: false }
+            });
+          }
+        }
+      } catch (regenError) {
+         console.error(`[CurriculumEvaluator] Failed targeted remediation pass:`, regenError);
+      }
+
       // Finally, set to ACTIVE
       await prisma.course.update({
         where: { id: courseId },
@@ -296,7 +651,7 @@ export class CourseService {
     }
   }
 
-  async generateMissingArticle(topicId: string, userId: string) {
+  async regenerateArticleForTopic(topicId: string, userId: string) {
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
       include: {
@@ -312,17 +667,12 @@ export class CourseService {
       throw new Error("Topic not found or unauthorized");
     }
 
-    // Check if it already has an article with content
     const existing = await prisma.learningResource.findFirst({
       where: { topicId, type: "ARTICLE" },
       include: { articleResource: true }
     });
 
-    if (existing?.articleResource?.content) {
-      return { success: true };
-    }
-
-    console.log(`Generating missing article for topic: ${topic.title}`);
+    console.log(`Regenerating article for topic: ${topic.title}`);
     
     // Check if there is a video resource to fetch the transcript
     const videoResource = await prisma.learningResource.findFirst({
@@ -333,10 +683,28 @@ export class CourseService {
     let transcript: string | undefined = undefined;
     if (videoResource?.videoResource?.youtubeVideoId) {
       const fetched = await fetchVideoTranscript(videoResource.videoResource.youtubeVideoId);
-      if (fetched) transcript = fetched;
+      if (fetched) {
+        // Long-video guard: cap transcripts from videos longer than 30 minutes
+        const isLongVideo = (videoResource.videoResource.durationSeconds ?? 0) > 1800;
+        transcript = isLongVideo ? truncateTranscriptSmart(fetched) : fetched;
+      }
     }
 
-    const content = await aiService.generateArticle(topic.title, topic.description || "", userId, transcript);
+    const content = await aiService.generateArticle({
+      topicTitle: topic.title,
+      topicDescription: topic.description || "",
+      lessonType: topic.type || "STANDARD",
+      learnerLevel: "intermediate", // default fallback when not in full course generation
+      objectives: topic.objectives ? JSON.parse(topic.objectives) : [],
+      keyConcepts: topic.keyConcepts ? JSON.parse(topic.keyConcepts) : [],
+      prerequisites: topic.prerequisites ? JSON.parse(topic.prerequisites) : [],
+      practicalOutcome: topic.practicalOutcome || undefined,
+      videoTranscript: transcript,
+      videoMetadata: videoResource?.videoResource ? { 
+        title: videoResource.title, 
+        channelName: videoResource.videoResource.channelName || ""
+      } : undefined,
+    }, userId);
 
     if (!existing) {
       const resource = await prisma.learningResource.create({

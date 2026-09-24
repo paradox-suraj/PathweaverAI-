@@ -82,6 +82,7 @@ export async function deleteWatchParty(id: string): Promise<void> {
   await redis.del(`${PARTY_PREFIX}${id}:participants`);
   await redis.del(`${PARTY_PREFIX}${id}:messages`);
   await redis.del(`${PARTY_PREFIX}${id}:reactions`);
+  await redis.del(`${PARTY_PREFIX}${id}:voicePeers`);
 }
 
 export async function joinWatchParty(id: string, userId: string): Promise<void> {
@@ -91,6 +92,15 @@ export async function joinWatchParty(id: string, userId: string): Promise<void> 
 
 export async function getParticipants(id: string): Promise<string[]> {
   return redis.smembers(`${PARTY_PREFIX}${id}:participants`);
+}
+
+export async function addVoicePeer(id: string, peerId: string): Promise<void> {
+  await redis.sadd(`${PARTY_PREFIX}${id}:voicePeers`, peerId);
+  await redis.expire(`${PARTY_PREFIX}${id}:voicePeers`, 60 * 60 * 24);
+}
+
+export async function getVoicePeers(id: string): Promise<string[]> {
+  return redis.smembers(`${PARTY_PREFIX}${id}:voicePeers`);
 }
 
 export async function addMessage(

@@ -21,8 +21,8 @@ export default function CourseCreationLevelSelection() {
 
     return (
         <div className="relative font-body-base overflow-hidden flex items-center justify-center min-h-[calc(100vh-80px)] w-full py-8">
-            <div className="absolute inset-0 z-0">
-                <div className="bg-cover bg-center w-full h-full opacity-30 filter blur-xl" style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuCz6RZuD6q8CRIPM1TF5Kst7JjC6kopMYjIl3Uor3xOmEfZb6DPQpfBloyKZ70EGr2gqkLkEWBc7yaHOKWl6LNYoyF2LVeeDFcVhxbe7HLNC-j3vuvUZGkg68FSXH7ej8MwrnANvKQW9W-A1XBHN0IfIJ6WA8oAtvUA__Mt2ChMzrhKIKOU3AwKSmXLqS4uPam0JOECPG3M8sy0cQ3_h1dxsQl-7pPR5E40_0GxHw1bcIFRYPfrBuJM-w')" }}></div>
+            <div className="absolute inset-0 z-0 pointer-events-none">
+                <div className="w-full h-full opacity-30" style={{ background: 'radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.18), transparent 60%), radial-gradient(circle at 70% 70%, rgba(59, 130, 246, 0.12), transparent 50%)' }}></div>
                 <div className="absolute inset-0 bg-bg-base/80"></div>
             </div>
             

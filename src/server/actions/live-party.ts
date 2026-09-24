@@ -3,7 +3,9 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { createWatchParty, deleteWatchParty } from "@/lib/watchParty";
+import { createWatchParty, deleteWatchParty, getWatchPartyState, addMessage } from "@/lib/watchParty";
+import { aiService } from "../services/ai.service";
+import { fetchVideoTranscript } from "../services/youtube";
 
 export async function createLiveParty({
   courseId,
@@ -126,6 +128,41 @@ export async function getCourseLessonsForParty(courseId: string) {
     return { success: true, modules: formattedModules };
   } catch (error: any) {
     console.error("Error fetching course lessons:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function askAICoHost(partyId: string, question: string) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) throw new Error("Unauthorized");
+
+    const state = await getWatchPartyState(partyId);
+    if (!state) throw new Error("Watch party not found");
+
+    let transcript = null;
+    if (state.currentVideoId) {
+      transcript = await fetchVideoTranscript(state.currentVideoId);
+    }
+
+    // Call the AI service
+    const response = await aiService.generateWatchPartyResponse(
+      question,
+      transcript,
+      session.user.id
+    );
+
+    // Inject AI message into chat
+    await addMessage(
+      partyId,
+      "ai-cohost",
+      "🤖 AI Co-Host",
+      response
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error asking AI Co-Host:", error);
     return { success: false, error: error.message };
   }
 }

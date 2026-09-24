@@ -4,28 +4,28 @@ import { useFormContext } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { CourseGenerationInput } from "@/server/schema/course";
 import { useState } from "react";
-import { Link2, FileText, TextCursorInput } from "lucide-react";
+import { Link2, FileText, TextCursorInput, PlaySquare } from "lucide-react";
 
 export default function CourseCreationWizard() {
     const { register, watch, setValue, formState: { isValid } } = useFormContext<CourseGenerationInput>();
     const router = useRouter();
     const topic = watch("topic");
     const sourceType = watch("sourceType") || "text";
+    const sourceContent = watch("sourceContent");
 
     const handleNext = () => {
-        if (topic?.length >= 2) {
+        const isPlaylistValid = sourceType !== 'playlist' || (!!sourceContent && sourceContent.includes('list='));
+        if (topic?.length >= 2 && isPlaylistValid) {
             router.push("/courses/create/level");
         }
     };
     return (
         <div className="relative font-body-base overflow-hidden flex items-center justify-center min-h-[calc(100vh-80px)] w-full py-8">
-            {/* Blurred Background Overlay */}
+            {/* Ambient Background Glow */}
             <div 
-                className="absolute inset-0 opacity-30 filter blur-xl scale-110 z-0" 
+                className="absolute inset-0 opacity-40 z-0 pointer-events-none" 
                 style={{
-                    backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBoUe0pt0MvREDCl5LEq0LzcgrTZw89_byB6jhqvTi8Mue2lLlYt3sYuOxraUJ7YWSJkbmVtSZc_NdXp_vzJv4og5DadjgKBhk-UYxXKay9ExuA_AvRouDcC_EiOap8PTEMoti1isrbLMP3hQG1RecpRJAKOoUDYjVWvSS5nFj96m4MM43frI0Vsq14a_or-T_twJPN8GlC4njWOlN2fiEnRSdt_Z1Em01nTEVDdv_8JbEWConMXIdufg")',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
+                    background: 'radial-gradient(circle at 50% 20%, rgba(139, 92, 246, 0.18), transparent 60%), radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.12), transparent 50%)'
                 }}
             />
             <div className="absolute inset-0 bg-background/80 z-0 backdrop-blur-sm"></div>
@@ -126,6 +126,14 @@ export default function CourseCreationWizard() {
                                 <FileText className={sourceType === 'pdf' ? 'text-primary' : 'text-text-muted'} />
                                 <span className="font-label-mono text-sm">Paste Document Text</span>
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => { setValue("sourceType", "playlist"); setValue("sourceContent", ""); }}
+                                className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${sourceType === 'playlist' ? 'border-red-500/70 bg-red-500/10' : 'border-white/10 bg-surface-2 hover:border-white/30'}`}
+                            >
+                                <PlaySquare className={sourceType === 'playlist' ? 'text-red-400' : 'text-text-muted'} />
+                                <span className="font-label-mono text-sm">YT Playlist</span>
+                            </button>
                         </div>
 
                         {sourceType === "url" && (
@@ -149,6 +157,27 @@ export default function CourseCreationWizard() {
                                 />
                             </div>
                         )}
+
+                        {sourceType === "playlist" && (
+                            <div className="space-y-3">
+                                <div className="relative group input-glow rounded-lg transition-all duration-300 border border-white/10 bg-black/20">
+                                    <PlaySquare className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-red-400" />
+                                    <input 
+                                        {...register("sourceContent")}
+                                        className="w-full bg-transparent border-none py-sp-4 pl-12 pr-sp-4 text-text-primary font-body-lg text-body-lg placeholder:text-text-muted/50 focus:ring-0 focus:outline-none rounded-lg" 
+                                        placeholder="https://www.youtube.com/playlist?list=PLxxx..." 
+                                        type="url" 
+                                    />
+                                </div>
+                                <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-red-500/20 bg-red-500/5">
+                                    <PlaySquare className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                                    <p className="font-label-mono text-xs text-text-muted leading-relaxed">
+                                        We&apos;ll use your playlist&apos;s video titles &amp; descriptions to structure the curriculum — <span className="text-text-secondary">no transcripts are read during generation</span>, keeping it fast &amp; token-efficient. Transcripts are fetched on-demand when you open a lesson&apos;s Deep Dive article. Public playlists only (up to 50 videos).
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                     </div>
 
                     <div className="space-y-sp-4">
@@ -173,7 +202,7 @@ export default function CourseCreationWizard() {
                     </button>
                     <button 
                         onClick={handleNext}
-                        disabled={!topic || topic.length < 2}
+                        disabled={!topic || topic.length < 2 || (sourceType === 'playlist' && (!sourceContent || !sourceContent.includes('list=')))}
                         className="disabled:opacity-50 disabled:cursor-not-allowed px-sp-8 py-sp-3 rounded-lg font-body-base text-body-base font-medium text-white bg-primary-gradient hover:scale-105 active:scale-95 transition-all duration-200 shadow-glow-primary flex items-center gap-2 group"
                     >
                         Next Step

@@ -4,13 +4,13 @@
   "description": "AI-powered personalized learning platform",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#0B1B3A",
+  "theme_color": "#0B1B3A",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "16x16 32x32 64x64",
-      "type": "image/x-icon"
+      "src": "/pathweaver-app_logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
     }
   ]
 }

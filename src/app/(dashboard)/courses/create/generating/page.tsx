@@ -4,7 +4,6 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { checkCourseStatus } from '@/server/actions/course';
 
 export default function GeneratingYourCourse() {
-    const [progress, setProgress] = useState(5);
     const [statusText, setStatusText] = useState("Initializing learning engine...");
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -12,11 +11,6 @@ export default function GeneratingYourCourse() {
     
     useEffect(() => {
         if (!courseId) return;
-
-        const totalDuration = 20000; // Increased expected duration
-        const updateInterval = 100;
-        let progressVal = 5;
-        const progressIncrement = (93 / (totalDuration / updateInterval));
 
         // Server Status Polling
         let isActive = false;
@@ -29,8 +23,6 @@ export default function GeneratingYourCourse() {
                 } else if (res.status === "ACTIVE") {
                     isActive = true;
                     clearInterval(pollInterval);
-                    clearInterval(progressInterval);
-                    setProgress(100);
                     setStatusText(res.statusMessage || "Curriculum Ready. Redirecting...");
                     
                     setTimeout(() => {
@@ -39,29 +31,12 @@ export default function GeneratingYourCourse() {
                 } else if (res.status === "FAILED") {
                     isActive = true;
                     clearInterval(pollInterval);
-                    clearInterval(progressInterval);
                     setStatusText(res.statusMessage || "Generation failed. Please try again.");
                 }
             }
         }, 2000); // Check every 2 seconds for real-time updates
 
-        // Visual fake progress
-        const progressInterval = setInterval(() => {
-            if (isActive) return;
-            progressVal += progressIncrement;
-            const jitter = Math.random() * 0.5 - 0.25; 
-            let currentProgress = progressVal + jitter;
-
-            // Cap at 98% until server actually says ACTIVE
-            if (currentProgress >= 98) {
-                currentProgress = 98;
-            }
-            
-            setProgress(Math.min(currentProgress, 98));
-        }, updateInterval);
-        
         return () => {
-            clearInterval(progressInterval);
             clearInterval(pollInterval);
         };
     }, [courseId, router]);
@@ -85,14 +60,14 @@ export default function GeneratingYourCourse() {
                     
                     <div className="w-full relative mb-sp-4">
                         <div className="w-full h-2 rounded-full bg-surface-2 overflow-hidden shadow-inner">
-                            <div className="h-full bg-primary-gradient rounded-full transition-all duration-300 ease-out shadow-[0_0_12px_rgba(139,92,246,0.8)] relative" style={{ width: `${progress}%` }}>
+                            <div className="h-full w-full bg-primary-gradient rounded-full transition-all duration-300 ease-out shadow-[0_0_12px_rgba(139,92,246,0.8)] relative">
                                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
                             </div>
                         </div>
                     </div>
                     
                     <div className="h-8 flex items-center justify-center">
-                        <p className={`font-body-base text-body-base transition-opacity duration-300 ${progress === 100 ? 'text-secondary-fixed' : 'text-text-secondary'}`}>
+                        <p className={`font-body-base text-body-base transition-opacity duration-300 text-text-secondary`}>
                             {statusText}
                         </p>
                     </div>

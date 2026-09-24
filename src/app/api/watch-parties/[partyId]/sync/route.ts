@@ -9,6 +9,8 @@ import {
   getMessages,
   addReaction,
   getReactions,
+  addVoicePeer,
+  getVoicePeers,
 } from '@/lib/watchParty';
 
 export async function POST(
@@ -45,18 +47,22 @@ export async function POST(
       await addMessage(partyId, userId, userName, payload.content);
     } else if (action === 'SEND_REACTION') {
       await addReaction(partyId, userId, payload.emoji);
+    } else if (action === 'REGISTER_VOICE_PEER') {
+      await addVoicePeer(partyId, payload.peerId);
     }
 
     // Return the latest state + messages (maybe limit to last 50)
     const messages = await getMessages(partyId, -50, -1);
     const participants = await getParticipants(partyId);
     const reactions = await getReactions(partyId, -20, -1);
+    const voicePeers = await getVoicePeers(partyId);
 
     return NextResponse.json({
       state: updatedState,
       messages,
       participants,
       reactions,
+      voicePeers,
     });
   } catch (error) {
     console.error('Watch Party sync error:', error);

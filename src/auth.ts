@@ -9,11 +9,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     jwt({ token, user, profile, account }) {
       if (user) {
-        console.log("=== NEXTAUTH LOGIN DIAGNOSTIC ===");
-        console.log("User Email:", user.email);
-        console.log("User Name:", user.name);
-        console.log("OAuth Profile:", profile);
-        console.log("=================================");
         token.id = user.id;
       }
       return token;

@@ -11,11 +11,15 @@ export function SidebarNav() {
     { name: "My Profile", href: "/profile", icon: "person", matchPrefix: true },
     { name: "Courses", href: "/courses", icon: "menu_book", matchPrefix: true },
     { name: "Community", href: "/community", icon: "public", matchPrefix: true },
+    { name: "Guilds", href: "/guilds", icon: "group", matchPrefix: true },
     { name: "Live Party", href: "/live-parties", icon: "celebration", matchPrefix: true },
     { name: "Bounties", href: "/bounties", icon: "attach_money", matchPrefix: true },
+    { name: "Messages", href: "/messages", icon: "chat", matchPrefix: true },
+    { name: "Leaderboard", href: "/leaderboard", icon: "leaderboard" },
     { name: "Review Queue", href: "/review", icon: "psychology" },
     { name: "Analytics", href: "/analytics", icon: "insights" },
     { name: "Achievements", href: "/achievements", icon: "military_tech" },
+    { name: "Wallet", href: "/wallet", icon: "account_balance_wallet", matchPrefix: true },
     { name: "Settings", href: "/settings", icon: "settings" },
   ];
 
@@ -31,7 +35,7 @@ export function SidebarNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-3 bg-primary/10 text-primary border-l-4 border-primary px-4 py-3 rounded-r-lg font-label-mono text-label-mono shadow-glow-primary scale-102 transition-all"
+              className="flex items-center gap-3 bg-gold-bg-subtle text-gold-light px-4 py-3 rounded-lg font-label-mono text-label-mono transition-colors"
             >
               <span className="material-symbols-outlined">{item.icon}</span>
               <span>{item.name}</span>
@@ -43,7 +47,7 @@ export function SidebarNav() {
           <Link
             key={item.href}
             href={item.href}
-            className="flex items-center gap-3 text-on-surface-variant px-4 py-3 rounded-lg hover:bg-surface-variant/50 hover:text-on-surface transition-all font-label-mono text-label-mono"
+            className="flex items-center gap-3 text-text-muted px-4 py-3 rounded-lg hover:bg-surface-variant/50 hover:text-text-primary transition-colors font-label-mono text-label-mono"
           >
             <span className="material-symbols-outlined">{item.icon}</span>
             <span>{item.name}</span>

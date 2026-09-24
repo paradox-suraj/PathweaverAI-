@@ -77,8 +77,7 @@ export default async function AnalyticsPage() {
     select: { resourceId: true }
   });
   
-  // We assume resourceId contains the topicId or we can approximate "Started" vs "Mastered"
-  // Let's use TopicMastery to see how many topics they successfully completed vs total topics in their plan
+  // Use TopicMastery to determine successfully mastered topics versus planned topics
   const masteries = await prisma.topicMastery.findMany({
     where: { userId },
     include: {

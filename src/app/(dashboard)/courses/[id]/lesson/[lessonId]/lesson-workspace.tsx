@@ -10,6 +10,7 @@ import { LessonNotesTab } from "./lesson-notes-tab";
 import { LessonQuizTab } from "./lesson-quiz-tab";
 import { LessonChatTab } from "./lesson-chat-tab";
 import { LessonArticleTab } from "./lesson-article-tab";
+import { LessonCodeTab } from "./lesson-code-tab";
 
 type LessonWorkspaceProps = {
   course: any;
@@ -17,7 +18,7 @@ type LessonWorkspaceProps = {
   nextLessonId: string | null;
   isCompleted: boolean;
   youtubeId: string | null;
-  initialTab?: "read" | "notes" | "chat" | "quiz";
+  initialTab?: "read" | "notes" | "chat" | "quiz" | "code";
 };
 
 export function LessonWorkspace({
@@ -28,7 +29,9 @@ export function LessonWorkspace({
   youtubeId,
   initialTab,
 }: LessonWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<"read" | "notes" | "chat" | "quiz">(initialTab || "read");
+  const codeResource = currentLesson.resources?.find((r: any) => r.type === 'CODE')?.codeResource;
+  const initial = initialTab || (codeResource ? "code" : "read");
+  const [activeTab, setActiveTab] = useState<"read" | "notes" | "chat" | "quiz" | "code">(initial);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [player, setPlayer] = useState<any>(null);
@@ -180,6 +183,14 @@ export function LessonWorkspace({
           >
             Deep Dive
           </button>
+          {codeResource && (
+            <button 
+              className={`flex-1 py-3 px-4 font-body-sm text-center transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'code' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-text-secondary border-b-2 border-transparent hover:text-text-primary hover:bg-white/5'}`}
+              onClick={() => setActiveTab('code')}
+            >
+              Code Challenge
+            </button>
+          )}
           <button 
             className={`flex-1 py-3 px-4 font-body-sm text-center transition-colors focus:outline-none whitespace-nowrap ${activeTab === 'notes' ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-text-secondary border-b-2 border-transparent hover:text-text-primary hover:bg-white/5'}`}
             onClick={() => setActiveTab('notes')}
@@ -211,6 +222,17 @@ export function LessonWorkspace({
                 window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll up to video
               }
             }}
+          />
+        )}
+        
+        {/* Tab Content: Code */}
+        {activeTab === 'code' && codeResource && (
+          <LessonCodeTab
+            topicId={currentLesson.id}
+            initialCode={codeResource.initialCode}
+            instructions={codeResource.instructions}
+            language={codeResource.language}
+            solutionCode={codeResource.solutionCode}
           />
         )}
 

@@ -104,10 +104,22 @@ const config: Config = {
         "on-tertiary-fixed": "#2c1700",
         "surface-container-high": "#2c2832",
         "info": "#3B82F6",
-        "surface-container-highest": "#37333d"
+        "surface-container-highest": "#37333d",
+        "bg-main": "var(--bg-main)",
+        "bg-card": "var(--bg-card)",
+        "border-light": "var(--border-light)",
+        "border-card": "var(--border-card)",
+        "gold-primary": "var(--gold-primary)",
+        "gold-light": "var(--gold-light)",
+        "gold-bg-subtle": "var(--gold-bg-subtle)",
+        "gold-text-dark": "var(--gold-text-dark)",
+        "orange-primary": "var(--orange-primary)",
+        "orange-bg-subtle": "var(--orange-bg-subtle)",
+        "text-dim": "var(--text-dim)",
+        "text-darkest": "var(--text-darkest)"
       },
       backgroundImage: {
-        "primary-gradient": "linear-gradient(135deg, #8B5CF6 0%, #4C1D95 100%)",
+        "primary-gradient": "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
       },
       borderRadius: {
         "DEFAULT": "0.25rem",

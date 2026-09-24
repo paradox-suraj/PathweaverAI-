@@ -3,6 +3,7 @@
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Image from "next/image";
 import { CursorHoverMask } from "@/components/cursor-hover-mask";
 
 export default function LandingPage() {
@@ -27,10 +28,8 @@ export default function LandingPage() {
           maskColor="#8B5CF6"
           backContent={
             <>
-              <div className="w-20 h-20 bg-surface-1 border border-white/10 rounded-2xl flex items-center justify-center mb-sp-6 shadow-glow-primary">
-                <span className="material-symbols-outlined text-4xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  neurology
-                </span>
+              <div className="relative w-24 h-24 mb-sp-6 mx-auto drop-shadow-2xl">
+                <Image src="/pathweaver-app_logo.png" alt="PathWeaver AI Logo" fill className="object-contain" priority />
               </div>
               
               <h1 className="font-headline-lg text-4xl md:text-6xl font-bold mb-sp-6 leading-tight">
@@ -44,10 +43,8 @@ export default function LandingPage() {
           }
           frontContent={
             <div className="text-black">
-              <div className="w-20 h-20 bg-black/10 border border-black/20 rounded-2xl flex items-center justify-center mb-sp-6 mx-auto">
-                <span className="material-symbols-outlined text-4xl text-black" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  neurology
-                </span>
+              <div className="relative w-24 h-24 mb-sp-6 mx-auto drop-shadow-xl">
+                <Image src="/pathweaver-app_logo.png" alt="PathWeaver AI Logo" fill className="object-contain" priority />
               </div>
               
               <h1 className="font-headline-lg text-4xl md:text-6xl font-bold mb-sp-6 leading-tight">
@@ -80,11 +77,10 @@ export default function LandingPage() {
       <footer className="w-full py-8 px-6 mt-auto border-t border-white/5 bg-surface-1/50 backdrop-blur-md relative z-10">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-text-muted">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary-gradient rounded flex items-center justify-center">
-              <span className="material-symbols-outlined text-[12px] text-white" style={{ fontVariationSettings: "'FILL' 1" }}>neurology</span>
+            <div className="relative w-32 h-6">
+              <Image src="/pathweaver-logo.png" alt="PathWeaver AI Logo" fill className="object-contain object-left brightness-0 invert" />
             </div>
-            <span className="font-semibold text-text-primary">PathWeaver AI</span>
-            <span>&copy; {new Date().getFullYear()}</span>
+            <span className="ml-2 border-l border-white/20 pl-2">&copy; {new Date().getFullYear()}</span>
           </div>
           
           <div className="flex gap-6">
