@@ -47,3 +47,6 @@ generated/
 # Secret and key files
 keys.json
 *keys*.json
+
+# Agent skills and IDE assistant files
+.agents/
